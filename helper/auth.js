@@ -6,7 +6,7 @@ module.exports = {
       return next();
     }else {
         // redirect to login package
-        res.redirect('/user/login')
+        res.redirect('/users/login')
     }
   }
 }
