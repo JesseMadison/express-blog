@@ -7,13 +7,14 @@ const exphbs = require('express-handlebars');
 const mongoose = require('mongoose');
 // require bosy parser to parse through the form content
 const bodyParser = require('body-parser');
-const methodOverride = require('method-override');
+const methodOverride = require('method-override')
 const passport = require('passport');
 const session = require('express-session');
-const bcrypt = require('bcryptjs');
-const db =  require('./config/database');
-console.log(db);
-
+const flash = require('connect-flash');
+// bring in the helper ensure authenticated function
+const {ensureAuthenticated} = require('./helper/auth');
+// include the database
+const db = require('./config/database');
 // if on production use production port else use 3000
 const port = process.env.PORT || 3000;
 
@@ -33,10 +34,6 @@ require('./models/Blog')
 // create a Blog model
 const Blog = mongoose.model('blogs');
 // All middlewares starts here
-
-// bring in the helper to ensure authenticated function
-const {ensureAuthenticated} = require('./helper/auth');
-
 // middleware for static css files
 app.use(express.static('public'));
 //middleware for body-parser
@@ -50,17 +47,30 @@ app.set('view engine', 'handlebars');
 
 // override with POST having ?_method=DELETE
 app.use(methodOverride('_method'))
-
-// middleware for express session, note passport middleware must be placed after express session
+// middle ware for express-session
+// note: passport middleware must be placed after express session
 app.set('trust proxy', 1) // trust first proxy
 app.use(session({
   secret: 'secure',
   resave: false,
   saveUninitialized: true
-}))
+}));
 
 app.use(passport.initialize());
 app.use(passport.session());
+
+// middleware for flash messages
+app.use(flash());
+app.use((req, res, next) => {
+  // declare a global variable for success msg
+  res.locals.success_msg = req.flash('success_msg');
+  //declare a global variable for error msg
+  res.locals.error_msg = req.flash('error_msg');
+  // declare a global variable user to be accessed in the views files
+  res.locals.user = req.user;
+  next();
+})
+
 // middleware codes
 // app.use((req, res, next) =>{
 //   console.log('middleware running');
@@ -70,11 +80,6 @@ app.use(passport.session());
 // });
 // home route
 
-app.use((req, res, next) => {
-  // declare a global varible user to
-  res.locals.user = req.user;
-  next();
-})
 // All middlewares end here
 app.get('/', (req, res) => {
   // render the home page
@@ -90,7 +95,7 @@ app.get('/about', (req, res) => {
 });
 
 // add form
-app.get('/blogs/new', ensureAuthenticated, (req, res) => {
+app.get('/blogs/new', ensureAuthenticated,  (req, res) => {
    res.render('blogs/new');
 });
 
@@ -111,14 +116,13 @@ app.post('/blogs',(req, res) => {
       description: req.body.description,
       errors: errors,
     });
-
   } else {
     // save to db
     // res.send('passed');
     let newBlog = {
       title: req.body.title,
       description: req.body.description,
-      // update user id to the blogs
+      // update user id to the blog
       user: req.user.id
     }
     new Blog(newBlog)
@@ -131,7 +135,7 @@ app.post('/blogs',(req, res) => {
   }
 });
 // show all blogs from  database
-app.get('/blogs', ensureAuthenticated, (req, res) =>{
+app.get('/blogs', (req, res) =>{
   Blog.find()
   .then(blogs => {
     console.log(blogs);
@@ -152,7 +156,8 @@ app.get('/blogs/:id/edit', ensureAuthenticated, (req, res) => {
     // if the blog does not belong to logged in user
     if(blog.user != req.user.id) {
       // redirect back to home page
-      res.redirect('/');
+      req.flash('error_msg', 'unauthorized user')
+      res.redirect('/blogs');
     } else {
       console.log(blog)
       res.render('blogs/edit', {
@@ -183,7 +188,10 @@ app.delete('/blogs/:id', ensureAuthenticated, (req, res) => {
   Blog.remove({
     _id: req.params.id
   })
-  .then(() => res.redirect('/blogs'))
+  .then(() =>{
+     req.flash('success_msg', 'you have successfully deleted the blog');
+     res.redirect('/blogs')
+  })
   .catch( err => console.log(err));
 });
 app.use('/users', users);
